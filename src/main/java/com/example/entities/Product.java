@@ -57,6 +57,7 @@ public class Product implements Serializable {
     private BigDecimal price;
     
 
+    // @NotNull
     @ManyToOne(fetch = FetchType.LAZY)
     private Presentation presentation;
 
