@@ -26,7 +26,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
-    public List<Product> finAll(Sort sort) {
+    public List<Product> findAll(Sort sort) {
         // TODO Auto-generated method stub
         return productDao.findAll(sort);
     }

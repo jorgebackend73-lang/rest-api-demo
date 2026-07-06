@@ -11,7 +11,7 @@ import com.example.entities.Product;
 public interface ProductService {
 
     Page<Product> findAll(Pageable pageable);
-    List<Product> finAll(Sort sort);
+    List<Product> findAll(Sort sort);
     Product findById(int id);
     Product save(Product product);
     void delete(Product product);
