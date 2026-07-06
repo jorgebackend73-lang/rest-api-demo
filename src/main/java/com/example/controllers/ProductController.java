@@ -1,5 +1,6 @@
 package com.example.controllers;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -17,14 +18,18 @@ import org.springframework.validation.ObjectError;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.example.entities.Product;
+import com.example.models.FileUploadResponse;
 import com.example.services.ProductService;
+import com.example.utilities.FileUploadUtil;
 
+import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
@@ -58,6 +63,8 @@ import lombok.RequiredArgsConstructor;
 public class ProductController {
 
     private final ProductService productService;
+
+        private final FileUploadUtil fileUploadUtil;
 
      /**
      * 
@@ -130,7 +137,7 @@ public class ProductController {
     */
 
     @GetMapping("/{id}") 
-    public ResponseEntity<Map>String, Object>> findProductByid(
+    public ResponseEntity<Map<String, Object>> findProductById(
         @PathVariable(name = "id", required = true) int product_id) {
 
             // Devolvemos objeto si ha ido bien
@@ -143,10 +150,10 @@ public class ProductController {
             Product product = productService.findById(product_id);
 
             if (product != null){
-                String successMessage = "El producto con id " - product_id + " ha sido encontrado.";
+                String successMessage = "El producto con id " + product_id + " ha sido encontrado.";
 
                 responseAsMap.put("mensaje todo OK", successMessage);
-                responseAsMap.put("producto encontrado", product);
+                responseAsMap.put("producto encontrado: ", product);
                 responseEntity = new ResponseEntity<Map<String, Object>>(responseAsMap, HttpStatus.OK);
 
 
@@ -169,27 +176,39 @@ public class ProductController {
         }
             
 
-            return null;
+            return responseEntity;
 
         }
 
         /*
         Método que recibe por post el producto para ser persistido(guardado) y que valida el JSON recibido
         para controlar si esta bien formado o no.
+
+        Primero hay que cambiar lo que recibe el metodo saveProduct, pq ya el producto no viene ocupando todo el 
+        cuerpo de la petición (request), si no una parte y la otra parte la ocupa la imagen del producto.
+
+        Muy importante, q n o se nos olvide anotar este mdtodo y todos los que insertan, crean, eliminan regisstros
+        en las tablas con la anotación @Transactional, también hay que especificar el tipo se archivo que va 
+        consumir este metodo.
+
         */
 
-        @PostMapping // no recibe nada pq ya lo trae el mapa de productos 
-        public ResponseEntity<Map<String, Object>> saveProduct(@Valid @RequestBody Product product, 
-            BindingResult result) {
+        @PostMapping(consumes = "multipart/form-data") // no recibe nada pq ya lo trae el mapa de productos 
+        @Transactional
+        // cambiamos RequestBody por RequestPart para traer por partes. 
+        // En RequestPart(name = "file -> o como sea que le hayamos llamdo en postman") 
+        public ResponseEntity<Map<String, Object>> saveProduct(@Valid @RequestPart Product product, 
+            BindingResult result, 
+            @RequestPart(name = "file", required = false) MultipartFile imagenDelProducto) throws IOException {
             // este método debe recibir a través de requestBody el producto a guardar en el cuerpo de la DB
             // con @valid de jakarta validation lo validamos
             // con BindinResult guardamos esa validación. Etoy comentando lo de arriba ^^
 
 
-            List<String> mensajeDeError = new ArrayList<>(); // aquí guardaremos los errores recibidos desde el if de más abajo.
+            List<String> mensajesDeError = new ArrayList<>(); // aquí guardaremos los errores recibidos desde el if de más abajo.
 
             // mandamos de vuelta to lo malo que hemos encontrado
-            Map<String,Object> responseAsMap = new HashMap<>(); // sin orden ninguno por ser HashMap
+            Map<String, Object> responseAsMap = new HashMap<>(); // sin orden ninguno por ser HashMap
             ResponseEntity<Map<String, Object>> responseEntity = null;
 
             //Lo de abajo, comprobar si hay errores en el producto recibido
@@ -198,27 +217,63 @@ public class ProductController {
                 // que realizo la petición (request) de persistir el producto
                 List<ObjectError> objectErrors = result.getAllErrors(); // listado de errores recibidos, que es lo que se manda
 
-                objectErrors.stream().forEach(objectError -> mensajeDeError.add(objectError.getDefaultMessage()));
+                objectErrors.stream().forEach(objectError -> mensajesDeError.add(objectError.getDefaultMessage()));
 
                 // la respuesta para el responseAsMap
-                responseAsMap.put("El producto tiene los siguientes errores: ", mensajeDeError);
+                responseAsMap.put("El producto tiene los siguientes errores: ", mensajesDeError);
                 responseAsMap.put("Producto mal formado: ", product);
 
-                responseEntity = new ResponseEntity<Map<String, Object>>(responseAsMap, HttpStatus.BAD_REQUEST);
+                responseEntity = new ResponseEntity<>(responseAsMap, HttpStatus.BAD_REQUEST);
+
+                return responseEntity;
             }
 
             // persistimos el producto, pq si hemos llegado hasta aquí es que esta bien
-            // pero por si las moscas try - catch
+            // pero por si las moscas try - catch.
+            // Y antes tb comprobar que hemos recibido imagen del producto para guardarla en el sistema de archivos.
+
+            if (imagenDelProducto != null && !imagenDelProducto.isEmpty()) {
+
+                /*Para guardar la imagen del producto, primero agregarle como prefijo un código alfanumérico generado 
+                aleatoriamente a partir de un metodo que se encuentra en la biblio apache commons text, que hay que descargar 
+                la Depend del Repo de Maven y ponerla en el pon.xml*/
+
+                /*@Service beans de servicio / @Repository quiero repo / @Controller quiero ...
+                Vamos a crear un componente en un paquete: com.example.utilities, con un método para guardar la imagen recibida 
+                en una carpeta del file sistem y devolver un código alfanumerico generado aleatoriamente que lleve como prefijo 
+                el nombre del fichero de imagen recibido. La carpeta será la que deseemos y se hara uso intensivo de NIO.2 y se 
+                comprobará si la carpeta existe o no para crearla si es el caso. */
+
+                String fileCode = fileUploadUtil
+                    .saveFile(imagenDelProducto.getOriginalFilename(), imagenDelProducto);
+
+                product.setProductImage(fileCode + imagenDelProducto.getOriginalFilename());
+                // con esto el producto tendría la imagen subida
+
+                // como es una api rest hay que devolver información al que realizó la request
+                // respecto de la imagen subida. 
+                // para ello en un paquete computo.example.models creamos un record donde devolveremos 
+                // la respuesta con la info de la imagen subida.
+
+                FileUploadResponse fileUploadResponse = new FileUploadResponse(
+                    fileCode + '-' + imagenDelProducto.getOriginalFilename(), "/products/fileDownload",
+                    imagenDelProducto.getSize()
+                );
+
+                responseAsMap.put("información de la imagen del producto", fileUploadResponse);
+
+            }
+
             try {
-                Product productoPersistido = productService.save((product));
-                responseAsMap.put("mensaje", "producto persistido exitosamente");
+                Product productoPersistido = productService.save(product);
+                responseAsMap.put("mensaje: ", "¡Producto persistido exitosamente!");
                 responseAsMap.put("producto persistido: ", productoPersistido);
-                responseEntity = new ResponseEntity<Map<String,Object>>(responseAsMap,HttpStatus.CREATED);
+                responseEntity = new ResponseEntity<Map<String, Object>>(responseAsMap,HttpStatus.CREATED);
                 
             } catch (DataAccessException e) {
                 responseAsMap.put("Error grave", "No ha podido ser guardado el producto y la causa más probable es: " 
                     + e.getMostSpecificCause().getMessage());
-                responseEntity = new ResponseEntity<Map<String,Object>>(responseAsMap, HttpStatus.INTERNAL_SERVER_ERROR);
+                responseEntity = new ResponseEntity<Map<String, Object>>(responseAsMap, HttpStatus.INTERNAL_SERVER_ERROR);
             
             }
 

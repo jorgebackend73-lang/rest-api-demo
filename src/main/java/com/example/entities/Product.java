@@ -3,6 +3,8 @@ package com.example.entities;
 import java.io.Serializable;
 import java.math.BigDecimal;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
@@ -42,7 +44,7 @@ public class Product implements Serializable {
     
     @NotNull(message = "El producto tiene que tener un nombre.")
     @NotEmpty(message = "El nombre del producto no puede estar vacio.")
-    @Size(min = 4, max = 30, message = "El nombre del producto no puede tener menos de 4 caracteres ni más de 25.")
+    @Size(min = 4, max = 25, message = "El nombre del producto no puede tener menos de 4 caracteres ni más de 25.")
     private String name;
 
     @NotNull(message = "La descripción del producto es requerida.")
@@ -57,8 +59,12 @@ public class Product implements Serializable {
     private BigDecimal price;
     
 
-    // @NotNull
+    @NotNull(message = "La presentación del producto es requerida")
     @ManyToOne(fetch = FetchType.LAZY)
+    @JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" })
     private Presentation presentation;
 
+    private String productImage;
+
+    // para entender el código hay que entender lo que hacemos en el postman
 }

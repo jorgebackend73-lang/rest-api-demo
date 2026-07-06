@@ -3,6 +3,8 @@ package com.example.entities;
 import java.io.Serializable;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -45,7 +47,7 @@ public class Presentation implements Serializable {
     
     @NotNull(message = "La presentación tiene que tener un nombre.")
     @NotEmpty(message = "El nombre de la presentacion no puede estar vacio.")
-    @Size(min = 4, max = 30, message = "El nombre de la presentacion no puede tener menos de 4 caracteres ni más de 25.")
+    @Size(min = 4, max = 25, message = "El nombre de la presentacion no puede tener menos de 4 caracteres ni más de 25.")
     private String name;
     
     @NotNull(message = "La presentación tiene que tener una descripción.")
@@ -57,6 +59,7 @@ public class Presentation implements Serializable {
     // productos. Por eso hacemos una lista de los productos que
     // compartan una misma presentación.
     @OneToMany(fetch = FetchType.LAZY, cascade = CascadeType.PERSIST, mappedBy = "presentation")
+    @JsonIgnore
     private List<Product> products;
 
 }
