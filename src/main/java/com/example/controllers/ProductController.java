@@ -187,7 +187,7 @@ public class ProductController {
         Primero hay que cambiar lo que recibe el metodo saveProduct, pq ya el producto no viene ocupando todo el 
         cuerpo de la petición (request), si no una parte y la otra parte la ocupa la imagen del producto.
 
-        Muy importante, q n o se nos olvide anotar este mdtodo y todos los que insertan, crean, eliminan regisstros
+        Muy importante, q no se nos olvide anotar este mdtodo y todos los que insertan, crean, eliminan regisstros
         en las tablas con la anotación @Transactional, también hay que especificar el tipo se archivo que va 
         consumir este metodo.
 
