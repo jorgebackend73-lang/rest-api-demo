@@ -46,7 +46,7 @@ public class FileUploadUtil {
 
         try (InputStream inputStream = multipartFile.getInputStream()) {
             // Se guarda en la ruta UploadPath de destino
-            Path destino = uploadPath.resolve(fileCode + "-" + fileName); 
+            Path destino = uploadPath.resolve(fileCode + fileName); 
             //genera ruta destino
             Files.copy(inputStream, destino, StandardCopyOption.REPLACE_EXISTING); 
             //pegamos fichero en la ruta

@@ -21,6 +21,7 @@ import org.springframework.validation.ObjectError;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
@@ -32,6 +33,7 @@ import com.example.models.FileUploadResponse;
 import com.example.services.ProductService;
 import com.example.utilities.FileDownloadUtil;
 import com.example.utilities.FileUploadUtil;
+import com.example.utilities.FileUtil;
 
 import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
@@ -70,6 +72,7 @@ public class ProductController {
 
     private final FileUploadUtil fileUploadUtil;
     private final FileDownloadUtil fileDownloadUtil;
+    private final FileUtil fileUtil;
 
      /**
      * 
@@ -318,5 +321,124 @@ public class ProductController {
                     .header(HttpHeaders.CONTENT_DISPOSITION, headerValue)
                     .body(resource);            
         }
+
+        /*Método que actualiza un producto cuyo id se recibe en la petición (request),
+        conjuntamente con el JSON del priducto y la imagen del producto , que no es 
+        requerida.
+        
+        El método es practicamente igual al metodo que persiste un producto con la imagen 
+        recibida (se impone corta y pega con los ajustes necesarios).
+        Copiamos el metodo de save product.*/
+
+        @PutMapping(value = "/{id}", consumes = "multipart/form-data") // no recibe nada pq ya lo trae el mapa de productos 
+        @Transactional
+        // cambiamos RequestBody por RequestPart para traer por partes. 
+        // En RequestPart(name = "file -> o como sea que le hayamos llamdo en postman") 
+        public ResponseEntity<Map<String, Object>> updateProduct(@Valid @RequestPart Product product, 
+            BindingResult result, 
+            @RequestPart(name = "file", required = false) MultipartFile imagenDelProducto,
+            @PathVariable int id) throws IOException {
+            // este método debe recibir a través de requestBody el producto a guardar en el cuerpo de la DB
+            // con @valid de jakarta validation lo validamos
+            // con BindinResult guardamos esa validación. Etoy comentando lo de arriba ^^
+
+
+            List<String> mensajesDeError = new ArrayList<>(); // aquí guardaremos los errores recibidos desde el if de más abajo.
+
+            // mandamos de vuelta to lo malo que hemos encontrado
+            Map<String, Object> responseAsMap = new HashMap<>(); // sin orden ninguno por ser HashMap
+            ResponseEntity<Map<String, Object>> responseEntity = null;
+
+            //Lo de abajo, comprobar si hay errores en el producto recibido
+            if (result.hasErrors()) {
+                // Recuperamos los errores del producto recibido y se lo informamos al
+                // que realizo la petición (request) de persistir el producto
+                List<ObjectError> objectErrors = result.getAllErrors(); // listado de errores recibidos, que es lo que se manda
+
+                objectErrors.stream().forEach(objectError -> mensajesDeError.add(objectError.getDefaultMessage()));
+
+                // la respuesta para el responseAsMap
+                responseAsMap.put("El producto tiene los siguientes errores: ", mensajesDeError);
+                responseAsMap.put("Producto mal formado: ", product);
+
+                responseEntity = new ResponseEntity<>(responseAsMap, HttpStatus.BAD_REQUEST);
+
+                return responseEntity;
+            }
+
+            // Actualizamos el producto. 
+            // Guardar/actualizar imagen en cuyo caso debemos primero eliminar la imagen asociada al producto
+            // en el sistema de archivos.
+
+            // Recuperando el producto cuyo id hemos recibido como parte de la request
+            Product _productoGuardado = productService.findById(id);
+
+            if (_productoGuardado == null) {
+
+                responseAsMap.put("mensaje de error: ", 
+                        "producto con id " + id + " no encontrado.");
+                    return new ResponseEntity<Map<String, Object>>(responseAsMap, HttpStatus.NOT_FOUND);
+            }
+
+             if (imagenDelProducto != null && !imagenDelProducto.isEmpty()) {
+
+                //Comprobar si el producto guardado tiene imagen y si es así eliminarla:
+                if (_productoGuardado.getProductImage() != null) {
+                    // Eliminar la imagen asociada al producto guardado:
+                    // para lo cual vamos a necesitar un metodo en un componente que reciba el nombre 
+                    // del fichero de imagen y lo busque en la ruta donde esten subidas nuestra imágenes 
+                    // y lo elimine.
+
+                    fileUtil.eliminarArchivo(_productoGuardado.getProductImage());
+
+                }
+
+                /*Para guardar la imagen del producto, primero agregarle como prefijo un código alfanumérico generado 
+                aleatoriamente a partir de un metodo que se encuentra en la biblio apache commons text, que hay que descargar 
+                la Depend del Repo de Maven y ponerla en el pon.xml*/
+
+                /*@Service beans de servicio / @Repository quiero repo / @Controller quiero ...
+                Vamos a crear un componente en un paquete: com.example.utilities, con un método para guardar la imagen recibida 
+                en una carpeta del file sistem y devolver un código alfanumerico generado aleatoriamente que lleve como prefijo 
+                el nombre del fichero de imagen recibido. La carpeta será la que deseemos y se hara uso intensivo de NIO.2 y se 
+                comprobará si la carpeta existe o no para crearla si es el caso. */
+
+                String fileCode = fileUploadUtil
+                    .saveFile(imagenDelProducto.getOriginalFilename(), imagenDelProducto);
+
+                product.setProductImage(fileCode + imagenDelProducto.getOriginalFilename());
+                // con esto el producto tendría la imagen  subida
+
+                // como es una api rest hay que devolver información al que realizó la request
+                // respecto de la imagen subida. 
+                // para ello en un paquete computo.example.models creamos un record donde devolveremos 
+                // la respuesta con la info de la imagen subida.
+
+                FileUploadResponse fileUploadResponse = new FileUploadResponse(
+                    fileCode + imagenDelProducto.getOriginalFilename(), "/products/fileDownload",
+                    imagenDelProducto.getSize()
+                );
+
+                responseAsMap.put("información de la imagen del producto", fileUploadResponse);
+
+            }
+
+            try {
+                product.setId(id); //con esto, save al ver que el prodcuto ya tiene id lo actualiza
+                Product productoPersistido = productService.save(product);
+                responseAsMap.put("mensaje: ", "¡Producto actualizado exitosamente!");
+                responseAsMap.put("producto actualizado: ", productoPersistido);
+                responseEntity = new ResponseEntity<Map<String, Object>>(responseAsMap,HttpStatus.OK);
+                
+            } catch (DataAccessException e) {
+                responseAsMap.put("Error grave", "No ha podido ser actualizado el producto y la causa más probable es: " 
+                    + e.getMostSpecificCause().getMessage());
+                responseEntity = new ResponseEntity<Map<String, Object>>(responseAsMap, HttpStatus.INTERNAL_SERVER_ERROR);
+            
+            }
+
+            return responseEntity;
+
+            }
 
 }
